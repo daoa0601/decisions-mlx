@@ -83,6 +83,27 @@ requests: 8 questions covering all three types, list and dict criteria, a JSON s
 | `letters`, JevK5 (bf16) | 8/8 | 0.0023 | 1.3–3.6 s → 0.5–1.3 s |
 | `clef`, Clef-Flash (8-bit, vs bf16 reference) | 8/8 | 0.0098 | 1.5–4.6 s → 0.6–1.0 s |
 
+## Zero-shot evaluation
+
+```bash
+uv run python scripts/evaluate.py --model ../clef-mlx/clef-flash-8bit --task banking77 --limit 200
+```
+
+`evaluate.py` sends each item of a labelled task through the adapter as a `/v1/systemone` request
+with one `choice` question over all the task's labels, so every model sees the same input. It
+reports accuracy, macro-F1, multi-class Brier, top-label ECE (15 bins) and median latency. On 200
+items of the BANKING77 test split (seed 0, 77 options), M4 Pro:
+
+| Model | Accuracy | Macro-F1 | Brier | ECE | Median per item |
+|---|---|---|---|---|---|
+| Clef-Flash, 8-bit | 0.935 | 0.911 | 0.101 | 0.054 | 3.7 s (one pass over all 77 options) |
+| JevK5 (4B), bf16 | 0.650 | 0.599 | 0.521 | 0.098 | 3.0 s (6 reads of ≤16 options) |
+
+Cloudflare reports 90.9 macro-F1 for Clef-Flash on BANKING77, and JevK5 reports 0.69 accuracy
+for v0.2 on BANKING77's train split; 200 items carry about ±6 points of sampling error. Both
+latencies are prompt-processing bound: Clef reads every option's description in one long prompt,
+and JevK5 reads 77 options as five groups of 15–16 plus a final.
+
 ## Attribution
 
 `src/decisions_mlx/adapters/semif.py` is ported from `jevk5/prompt.py` in
