@@ -4,12 +4,21 @@ The two sides run in separate subprocesses so their weights never share memory.
 
     uv run python scripts/parity.py --adapter letters --model alibiserikbay/JevK5
     uv run python scripts/parity.py --adapter clef --model Cloudflare/clef-flash --mlx-model ../clef-mlx/clef-flash-8bit
+    uv run python scripts/parity.py --adapter canvas --model mlx-community/diffusiongemma-26B-A4B-it-4bit
+    uv run python scripts/parity.py --adapter laya --model convaiinnovations/laya-typed-decisions --device cpu
+    uv run python scripts/parity.py --adapter verdict --model heman10x/rlcd-modernbert-151m --device cpu
+
+The canvas reference is OpenJev's own MLX engine on the same mlx-vlm, with the adapter's noise
+seed, so it checks the port; adapters that take images also get the image requests. The laya and
+verdict references are OpenJev's engines over the ``laya`` and ``gliclass`` packages.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -70,6 +79,47 @@ REQUESTS = [
 ]
 
 
+def receipt_data_url() -> str:
+    from PIL import Image, ImageDraw, ImageFont
+
+    image = Image.new("RGB", (480, 360), "white")
+    draw = ImageDraw.Draw(image)
+    for row, line in enumerate(["ACME HARDWARE", "Hammer      12.99", "Nails        4.50", "TOTAL      $17.49"]):
+        draw.text((30, 30 + row * 70), line, fill="black", font=ImageFont.load_default(size=28))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+
+
+IMAGE_REQUESTS = [
+    {
+        "model": "parity",
+        "state": "Review the attached receipt.",
+        "images": [receipt_data_url()],
+        "questions": {
+            "over_15": {"type": "noul", "instructions": "Is the receipt total above 15 USD?"},
+            "store": {"type": "choice", "instructions": "What kind of store issued it?", "criteria": ["grocery", "hardware", "restaurant"]},
+        },
+    }
+]
+IMAGE_ADAPTERS = {"canvas"}
+
+
+def requests_for(adapter: str) -> list[dict]:
+    return REQUESTS + (IMAGE_REQUESTS if adapter in IMAGE_ADAPTERS else [])
+
+
+def parse(body: dict):
+    """The adapter-side request: data URLs become PIL images, as the server does."""
+    from dataclasses import replace
+
+    from decisions_mlx import parse_request
+    from decisions_mlx.server import decode_image
+
+    request = parse_request(body)
+    return replace(request, images=[decode_image(url) for url in request.images])
+
+
 def reference_letters(model: str, device: str) -> list[dict]:
     from jevk5 import JevK5
 
@@ -110,18 +160,91 @@ def reference_clef(model: str, device: str) -> list[dict]:
     return results
 
 
-REFERENCES = {"letters": reference_letters, "clef": reference_clef}
+def reference_canvas(model: str, device: str) -> list[dict]:
+    import asyncio
+
+    from openjev.config import Settings
+    from openjev.mlx_backend import MlxEngine
+    from transformers import AutoTokenizer
+
+    from decisions_mlx.adapters import resolve
+    from decisions_mlx.adapters.canvas import seed_of
+
+    path = resolve(model)
+    engine = MlxEngine(Settings(mlx_model=str(path), warmup=False), AutoTokenizer.from_pretrained(path))
+
+    async def run() -> list[dict]:
+        results = []
+        for body in requests_for("canvas"):
+            request = parse(body)
+            images = [{"type": "image_url", "image_url": {"url": url}} for url in body.get("images", [])]
+            start = time.perf_counter()
+            answers, _, _ = await engine.decide(request.questions, request.state, seed_of(request), images or None)
+            probabilities = {
+                qid: {"true": a["noul"], "false": 1 - a["noul"]} if a["type"] == "noul" else a["probabilities"]
+                for qid, a in answers.items()
+            }
+            results.append({"seconds": time.perf_counter() - start, "probabilities": probabilities})
+        return results
+
+    return asyncio.run(run())
+
+
+def reference_encoder(adapter: str):
+    def run(model: str, device: str) -> list[dict]:
+        import asyncio
+
+        from openjev.config import Settings
+        from openjev.encoders import LayaEngine, VerdictEngine
+
+        from decisions_mlx.adapters import resolve
+
+        path = str(resolve(model))
+        if adapter == "laya":
+            engine = LayaEngine(Settings(laya_model=path, device=device, warmup=False))
+        else:
+            engine = VerdictEngine(Settings(verdict_model=path, device=device, warmup=False))
+
+        async def decide() -> list[dict]:
+            results = []
+            for body in requests_for(adapter):
+                request = parse(body)
+                # instructions as the adapter sends them: the question id when missing
+                questions = {
+                    qid: {**q, "instructions": q.get("instructions") or qid} for qid, q in request.questions.items()
+                }
+                start = time.perf_counter()
+                answers, _, _ = await engine.decide(questions, request.state, 0)
+                probabilities = {
+                    qid: {"true": a["noul"], "false": 1 - a["noul"]} if a["type"] == "noul" else a["probabilities"]
+                    for qid, a in answers.items()
+                }
+                results.append({"seconds": time.perf_counter() - start, "probabilities": probabilities})
+            return results
+
+        return asyncio.run(decide())
+
+    return run
+
+
+REFERENCES = {
+    "letters": reference_letters,
+    "clef": reference_clef,
+    "canvas": reference_canvas,
+    "laya": reference_encoder("laya"),
+    "verdict": reference_encoder("verdict"),
+}
 
 
 def run_mlx(adapter: str, model: str) -> list[dict]:
-    from decisions_mlx import load, parse_request
+    from decisions_mlx import load
 
     decider = load(model, adapter)
-    decider.decide(parse_request(REQUESTS[0]))  # warm up kernels
+    decider.decide(parse(REQUESTS[0]))  # warm up kernels
     results = []
-    for body in REQUESTS:
+    for body in requests_for(adapter):
         start = time.perf_counter()
-        decision = decider.decide(parse_request(body))
+        decision = decider.decide(parse(body))
         results.append({"seconds": time.perf_counter() - start, "probabilities": decision.probabilities})
     return results
 

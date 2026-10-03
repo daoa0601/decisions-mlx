@@ -31,7 +31,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "accelerate>=1.15.0",
+    "gliclass==0.1.20",
     "jevk5",
+    "laya",
+    "openjev",
     "pytest>=9.1.1",
     "torch>=2.14.1",
     "torchvision>=0.29.1",
@@ -39,5 +42,7 @@ dev = [
 
 [tool.uv.sources]
 clef-mlx = { path = "../clef-mlx", editable = true }
-# Reference implementation for the letters adapter's parity check.
+# Reference implementations for the parity checks (letters: JevK5; canvas, laya, verdict: OpenJev's engines).
 jevk5 = { git = "https://github.com/allebee/jevk5", rev = "f26426d16f59e8bbe1470e5b162cc89329e29b29" }
+laya = { git = "https://github.com/NandhaKishorM/laya", rev = "fa9a2a7070b1789912a49ae24603bbfb1a78b001" }
+openjev = { git = "https://github.com/razorback16/openjev", rev = "dcd20947b5ddad5be4a8f5aed6aa6dd245653823" }

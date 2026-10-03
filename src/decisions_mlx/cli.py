@@ -1,4 +1,4 @@
-"""``decisions-mlx`` command line: answer one /v1/systemone request, or serve the endpoint.
+"""``decisions-mlx`` command line: answer one /v1/systemone request, serve the endpoint, or quantize.
 
 A model is given as ``[adapter:]path-or-repo``; without the prefix the adapter is detected.
 """
@@ -36,10 +36,21 @@ def main(argv: list[str] | None = None) -> None:
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8080)
 
+    convert_parser = commands.add_parser("convert", help="quantize a clef or letters model for MLX")
+    convert_parser.add_argument("--model", required=True, help="[adapter:]path-or-repo")
+    convert_parser.add_argument("--out", required=True)
+    convert_parser.add_argument("--bits", type=int, default=8)
+    convert_parser.add_argument("--group-size", type=int, default=64)
+
     args = parser.parse_args(argv)
 
-    from .adapters import load
+    from .adapters import convert, load
     from .api import systemone
+
+    if args.command == "convert":
+        adapter, model = parse_model(args.model)
+        print(f"wrote {convert(model, args.out, adapter, args.bits, args.group_size)}")
+        return
 
     if args.command == "run":
         adapter, model = parse_model(args.model)
