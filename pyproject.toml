@@ -1,0 +1,43 @@
+[project]
+name = "decisions-mlx"
+version = "0.1.0"
+description = "Jev / SystemOne decision models on Apple silicon with MLX: one API, one adapter per model family"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Anh Dao", email = "anhdd2000@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "clef-mlx>=0.1,<0.2",
+    "huggingface-hub>=1.33.0",
+    "mlx>=0.32",
+    "mlx-lm>=0.32",
+    "pillow>=10.3",
+    "transformers>=5.18.0",
+]
+
+[project.scripts]
+decisions-mlx = "decisions_mlx.cli:main"
+
+[project.optional-dependencies]
+vision = ["clef-mlx[vision]"]
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "accelerate>=1.15.0",
+    "jevk5",
+    "pytest>=9.1.1",
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
+]
+
+[tool.uv.sources]
+clef-mlx = { path = "../clef-mlx", editable = true }
+# Reference implementation for the letters adapter's parity check.
+jevk5 = { git = "https://github.com/allebee/jevk5", rev = "f26426d16f59e8bbe1470e5b162cc89329e29b29" }
