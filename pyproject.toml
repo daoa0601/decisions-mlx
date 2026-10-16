@@ -10,7 +10,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "clef-mlx",
+    "clef-mlx>=0.2",
     "huggingface-hub>=1.33.0",
     "mlx>=0.32",
     "mlx-lm>=0.32",
@@ -22,7 +22,7 @@ dependencies = [
 decisions-mlx = "decisions_mlx.cli:main"
 
 [project.optional-dependencies]
-vision = ["clef-mlx[vision]"]
+vision = ["clef-mlx[vision]>=0.2"]
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
