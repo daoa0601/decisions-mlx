@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import mlx.core as mx
-
 from ..api import Decision, Request
 
 
@@ -23,10 +21,4 @@ class ClefDecider:
         encoded = self.clef.encode(
             {"state": request.state, "questions": request.questions, "images": request.images}
         )
-        probabilities = {
-            question.question_id: dict(
-                zip(question.option_ids, mx.softmax(logits.astype(mx.float32), axis=-1).tolist())
-            )
-            for question, logits in zip(encoded.questions, self.clef.logits(encoded))
-        }
-        return Decision(probabilities, len(encoded.input_ids))
+        return Decision(self.clef.option_probabilities(encoded), len(encoded.input_ids))

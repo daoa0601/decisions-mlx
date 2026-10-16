@@ -10,7 +10,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "clef-mlx>=0.1,<0.2",
+    "clef-mlx",
     "huggingface-hub>=1.33.0",
     "mlx>=0.32",
     "mlx-lm>=0.32",
